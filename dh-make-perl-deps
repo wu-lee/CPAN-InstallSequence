@@ -1,0 +1,94 @@
+#!/usr/bin/perl
+
+#use 5.010;
+# Adapted from http://www.perlmonks.org/?node_id=753543
+
+use strict;
+use warnings FATAL => 'all';
+use CPANPLUS::Backend;
+use File::HomeDir;
+use File::Spec;
+use File::Path qw(rmtree mkpath);
+use File::Glob qw(bsd_glob);
+use Cwd;
+
+$ENV{DEBEMAIL} = 'dh-make-perl.5.wu-lee@spamgourmet.org';
+my $user = 'npw';
+
+
+my $fetch_dir = File::Spec->catdir(File::HomeDir->my_home, qw(.dh-make-perl-deps mods));
+my $build_dir = File::Spec->catdir(File::HomeDir->my_home, qw(.dh-make-perl-deps build));
+my $DEL_SOURCE = 0;
+
+
+mkpath $_ for $fetch_dir, $build_dir;
+
+my $conf = CPANPLUS::Configure->new;
+$conf->set_conf(
+	prereqs => 1,
+	dist_type => '',
+	skiptest => 0,
+	extractdir => $build_dir,
+	fetchdir => $fetch_dir,
+#	verbose => 1
+);
+my $cpan = CPANPLUS::Backend->new($conf);
+
+run();
+
+
+
+
+sub run {
+    update_perl5lib();
+    fetch_and_test($_)
+      for @ARGV;
+
+    for my $dir (grep -d, glob "$build_dir/*") {
+		# don't build this dir if it's already been built
+		my $deb_link = "$dir/.deb";
+		next if -f $deb_link;
+
+		my @opts =  (qw/--notest --build/);
+
+		# if there is a debian dir existing, don't clobber it, 
+		# just refresh, since it may contain manual tweaks
+        push @opts, '--refresh'
+          if -e "$dir/debian";
+
+        my ($module, $ver) = $dir =~ m!$build_dir/.*?(.*)-(.*)!;
+        my $deb = lc "lib$module-perl";            
+
+		update_perl5lib();
+        local $ENV{DEB_BUILD_OPTIONS} = 'nocheck';
+		my @command = (qw/dh-make-perl --version/, "$ver-0.0~$user", @opts, $dir);
+		warn("failed to execute, skipping: @command\n"), next 
+			unless system(@command) == 0;
+
+		rmtree($dir), next
+			if $DEL_SOURCE;
+	
+		# mark this dir as built - create a symlink in it to the .deb built from it
+		my ($deb_path) = bsd_glob "$build_dir/$deb*.deb";
+		symlink $deb_path, $deb_link; 
+    }
+}
+
+sub fetch_and_test {
+    my $module_name = shift;
+#    system qw[
+#        cpanp
+#        s conf prereqs 1;
+#    ],
+#    "t", $module_name;
+
+	my $module = $cpan->module_tree($module_name);
+	$module->test;
+}
+
+
+sub update_perl5lib
+{
+    my $pwd = Cwd::cwd;
+    $ENV{PERL5LIB} = join ":", grep(-d, <$pwd/*/blib/lib>, <$pwd/*/blib/arch>), @INC;
+}
