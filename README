@@ -1,0 +1,9 @@
+I've been using dh-make-perl to package CPAN distributions as Debian
+packages, and although it works well for a single package, I was
+mildly frustrated by the inability to follow dependencies.  So, I've
+written some code to generate a Perl module install sequence using
+CPANPLUS, and a wrapper for dh-make-perl.  It's very very early days,
+but it will now find and go and build a list of dependencies, given a
+Perl module name, and build them into Debian packages using
+dh-make-perl.
+
