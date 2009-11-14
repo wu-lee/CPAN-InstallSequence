@@ -12,6 +12,9 @@ use File::Path qw(rmtree mkpath);
 use File::Glob qw(bsd_glob);
 use Cwd;
 
+my $module_name = shift 
+    or die "Please supply the name of a perl module\n";
+
 $ENV{DEBEMAIL} = 'dh-make-perl.5.wu-lee@spamgourmet.org';
 my $user = 'npw';
 
@@ -34,7 +37,7 @@ $conf->set_conf(
 );
 my $cpan = CPANPLUS::Backend->new($conf);
 
-run();
+run($module_name);
 
 
 
@@ -42,7 +45,7 @@ run();
 sub run {
     update_perl5lib();
     fetch_and_test($_)
-      for @ARGV;
+      for @_;
 
     for my $dir (grep -d, glob "$build_dir/*") {
 		# don't build this dir if it's already been built
