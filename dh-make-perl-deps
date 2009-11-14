@@ -1,97 +1,376 @@
 #!/usr/bin/perl
-
-#use 5.010;
-# Adapted from http://www.perlmonks.org/?node_id=753543
-
 use strict;
-use warnings FATAL => 'all';
+use warnings;
+
+use CPAN::FindDependencies;
+use File::Temp;
+use List::Util qw(max);
 use CPANPLUS::Backend;
-use File::HomeDir;
-use File::Spec;
-use File::Path qw(rmtree mkpath);
-use File::Glob qw(bsd_glob);
-use Cwd;
 
 my $module_name = shift 
     or die "Please supply the name of a perl module\n";
 
 $ENV{DEBEMAIL} = 'dh-make-perl.5.wu-lee@spamgourmet.org';
-my $user = 'npw';
+my $cpan = CPANPLUS::Backend->new;
 
+my $perl_version = $];
+my $cache_dir = File::Temp::tempdir( CLEANUP => 1);
 
-my $fetch_dir = File::Spec->catdir(File::HomeDir->my_home, qw(.dh-make-perl-deps mods));
-my $build_dir = File::Spec->catdir(File::HomeDir->my_home, qw(.dh-make-perl-deps build));
-my $DEL_SOURCE = 0;
+use File::Path qw(mkpath);
+$cache_dir = "/home/nick/tmp/cpan-deps"; mkpath $cache_dir;
 
-
-mkpath $_ for $fetch_dir, $build_dir;
-
-my $conf = CPANPLUS::Configure->new;
-$conf->set_conf(
-	prereqs => 1,
-	dist_type => '',
-	skiptest => 0,
-	extractdir => $build_dir,
-	fetchdir => $fetch_dir,
-#	verbose => 1
-);
-my $cpan = CPANPLUS::Backend->new($conf);
-
-run($module_name);
+# DEBUG
+print "# Cache dir: $cache_dir\n";
 
 
 
-
-sub run {
-    update_perl5lib();
-    fetch_and_test($_)
-      for @_;
-
-    for my $dir (grep -d, glob "$build_dir/*") {
-		# don't build this dir if it's already been built
-		my $deb_link = "$dir/.deb";
-		next if -f $deb_link;
-
-		my @opts =  (qw/--notest --build/);
-
-		# if there is a debian dir existing, don't clobber it, 
-		# just refresh, since it may contain manual tweaks
-        push @opts, '--refresh'
-          if -e "$dir/debian";
-
-        my ($module, $ver) = $dir =~ m!$build_dir/.*?(.*)-(.*)!;
-        my $deb = lc "lib$module-perl";            
-
-		update_perl5lib();
-        local $ENV{DEB_BUILD_OPTIONS} = 'nocheck';
-		my @command = (qw/dh-make-perl --version/, "$ver-0.0~$user", @opts, $dir);
-		warn("failed to execute, skipping: @command\n"), next 
-			unless system(@command) == 0;
-
-		rmtree($dir), next
-			if $DEL_SOURCE;
-	
-		# mark this dir as built - create a symlink in it to the .deb built from it
-		my ($deb_path) = bsd_glob "$build_dir/$deb*.deb";
-		symlink $deb_path, $deb_link; 
-    }
-}
-
-sub fetch_and_test {
+sub cpan_finddependencies {
     my $module_name = shift;
-#    system qw[
-#        cpanp
-#        s conf prereqs 1;
-#    ],
-#    "t", $module_name;
+    
 
-	my $module = $cpan->module_tree($module_name);
-	$module->test;
+    print "Constructing dependency tree for $module_name...\n";
+    my @deps = CPAN::FindDependencies::finddeps(
+        $module_name,
+        nowarnings => 1,
+        perl => $perl_version,
+        cachedir => $cache_dir,
+        '02packages' => '/home/nick/.cpanplus/02packages.details.txt.gz', # DEBUG
+        usemakefilepl => 0,
+        recommended => 0,
+    );
+    
+
+    print "Deducing installation order...\n";
+    
+    # This array will be populated with hashref elements
+    # with the same keys as the first (which represents $dep[0])
+    my @index = ({last_seen_child => undef, 
+                  prev_sibling => undef,
+                  parent => undef});
+    
+    # This is the last dependency's depth 
+    my $last_depth = $deps[0]->depth;
+    
+    # This records the indexes of the last dependencies seen at any given
+    # depth
+    my @last_seen = ($last_depth); 
+    
+    # We can skip the first element because it was populated above.
+    foreach my $dep (@deps[1..$#deps]) {
+        my $name = $dep->name;
+        my $depth = $dep->depth;
+        
+        my $elem = {last_seen_child => undef,
+                    prev_sibling => undef,
+                    parent => undef};
+        
+        if ($depth > $last_depth) {
+            # We are a child of the last elem
+
+            # Sanity check
+            warn("$name has depth $depth, which has increased ",
+                 "more than one unit from $last_depth!  ",
+                 "Possibly something is wrong.")
+                     if $depth > $last_depth+1;
+            
+            # Our parent's index should have been recorded here
+            my $parent_ix = $last_seen[$last_depth];
+            
+            # Update our parent's last_seen_child index to point to us
+            $index[$parent_ix]->{last_seen_child} = @index;
+            
+            # Update our parent index too
+            $elem->{parent} = $parent_ix;
+            
+            #        # Truncate @last_seen
+            #        $#last_seen = $depth+1;
+        }
+        else {
+            # Our parent's index should have been recorded here
+            my $parent_ix = $last_seen[$depth-1];
+            
+            # We are a sibling of the last elem at the same depth
+            my $sibling_ix = $last_seen[$depth];
+            
+            # Record our previous sibling's index and our parent index
+            $elem->{prev_sibling} = $sibling_ix;
+            $elem->{parent} = $parent_ix;
+            
+            # And our parent's last_seen_child index
+            $index[$parent_ix]->{last_seen_child} = @index;
+        };
+        
+        $last_seen[$depth] = @index;
+        push @index, $elem;
+        
+        $last_depth = $depth;
+    }
+    
+    # Now, we can construct a leftwards, depth-first traveral of the
+    # dependecy tree:
+    
+    my @ldf_deps;
+    
+    
+    my $traverse;
+    $traverse = sub {
+        my $ix = shift;
+        return unless defined $ix;
+        
+        push @ldf_deps, $deps[$ix];
+        
+        my $elem = delete $index[$ix];
+        
+        # Traverse the tree down to the leftmost child, or if no children,
+        # to the previous sibling.  Or if neither is present, stop
+        # recursing.
+        $traverse->($elem->{last_seen_child});
+        $traverse->($elem->{prev_sibling});
+    };
+
+
+
+
+    my $dump_index = sub {
+        
+        my $max = max map length $_->name, @deps;
+        my $index = 0;
+        printf "% ${max}s  % ${max}s  % ${max}s\n", 
+            qw(name last_seen_child prev_sibling);
+        
+        for my $elem (@index) {
+            my @names = map {
+                defined $_?
+                    $deps[$_]->name :
+                        "<?>";
+            } $index++, @$elem{qw(last_seen_child prev_sibling)};
+        
+            printf "% ${max}s  % ${max}s  % ${max}s\n", 
+            @names;
+        }
+    };
+        
+    #dump_index;
+    $traverse->(0);
+    
+    print $_->distribution, "\n"
+        foreach reverse @ldf_deps;
+
+    return map $cpan->parse_module(module => $_->distribution), reverse @ldf_deps;
 }
 
 
-sub update_perl5lib
-{
-    my $pwd = Cwd::cwd;
-    $ENV{PERL5LIB} = join ":", grep(-d, <$pwd/*/blib/lib>, <$pwd/*/blib/arch>), @INC;
+
+######################################################################
+sub _get_meta {
+    my ($name, $version) = @_;
+    my $name_version = $version? 
+        "$name-$version" : $name;
+
+    my $dir = "$cache_dir/$name_version";
+    mkpath $dir;
+
+    my $meta_yml_path = "$dir/META.yml";
+
+    # See http://use.perl.org/articles/07/12/27/1813223.shtml
+    my $meta_yml_url = "http://search.cpan.org/meta/$name_version/META.yml";
+    my $rc = LWP::Simple::getstore($meta_yml_url, $meta_yml_path);
+    warn "# $meta_yml_url => $rc\n"; # DEBUG
+    return $meta_yml_path if $rc == 200;
+    return;
+}
+
+# FIXME if the package meta info can't be found, this should mark the
+# package as requiring either *any* version, if one is installed, or
+# the latest otherwise.
+sub _get_prereqs {
+    my $module = shift;
+    my $consumers = shift;
+
+    my $name = $module->package_name;
+    my $version = $module->package_version;
+
+    my $meta_yml_path = _get_meta($name, $version);
+
+    if (!$meta_yml_path) { # something failed
+        warn "# CPANPLUS->fetch($name-$version)\n"; # DEBUG
+        if ($module->fetch && $module->extract) {
+            my $prereqs = $module->prereqs
+                if $module->can('prereqs'); # CPAN::Module::Fake can't.
+            return %{ $prereqs || {} }
+        }
+
+        warn(" failed to get the specific version $version of $name,",
+             " will therefore try to use the latest version\n",
+             " consumers of $name-$version are: @$consumers\n");
+        $meta_yml_path = _get_meta($name);
+    }
+
+    if (!$meta_yml_path) {
+        warn(" failed to get any version of $name, skipping it\n",
+             " consumers of $name-$version are: @$consumers\n");
+        return;
+    }
+
+    my $data = YAML::Tiny::LoadFile($meta_yml_path);
+        
+    my @prereqs = map { %{ $data->{$_} || {} } }
+        qw(configure_requires build_requires requires recommends);
+    return @prereqs;
+}
+
+sub _is_uptodate {
+    my $module = shift;
+    my $versions = shift;
+
+    my $distro_name = $module->package_name;
+    my $distro_version = $versions->{$distro_name};
+    my $norm_version = $distro_version->normal;
+    
+    # parse the distro name
+    $module = $cpan->parse_module(module => $distro_name);
+
+    
+    my $inst_version = $module->installed_version?
+        version->new($module->installed_version)->normal :
+            "none";
+    
+    print "Checking $distro_name-$norm_version...\n";
+    
+    # skip this module if it is installed already
+    #        my %options = (version => $raw_module_version)
+    #            if $raw_module_version;
+    my $uptodate = $module->is_uptodate;
+    print $uptodate?
+        " require $distro_name $norm_version, as we have $inst_version\n" :
+            " $distro_name is up to date (required: $norm_version; we have $inst_version)\n" ;
+    
+    return $uptodate;
+}
+
+sub cpanplus_backend {
+    my $module_name = shift;
+    my $version = shift || 0;
+
+    my @modules = ($module_name, $version);
+
+
+    # First, deduce the install order and required versions
+    # for all the dependencies of $module_name-$version:
+    my @distros;
+    my %versions;
+    my %consumers;
+    while(@modules) {
+        my $module_name = shift @modules;
+        my $raw_module_version = shift @modules;
+
+        # Don't try and install or analyse Perl or its dependencies.
+        next if $module_name eq 'perl';
+
+        # Construct a hypothetical distname with version, for parse_module
+        (my $distname = $module_name) =~ s/::/-/g;
+        my $distname_version = $raw_module_version?
+            "$distname-$raw_module_version" : $distname;
+
+        # And so find the actual package this module belongs to
+        my $module = $cpan->parse_module(module => $distname_version);
+        if (!$module) {
+            warn "$distname_version: can't parse module name, skipping it\n";
+            next;
+        }
+
+        my $distro_name = $module->package_name;
+
+        # Again: don't tackle Perl.
+        next if $distro_name eq 'perl';
+
+
+        my $distro_version = version->new($module->package_version);
+        $distname_version = "$distro_name-$distro_version";
+
+
+        if (defined $versions{$distro_name}) { 
+            # We've seen this distro before: simply bump the version
+            # required and continue getting the prereqs, if that is
+            # needed, otherwise we've nothing more to do for it
+            next if $distro_version <= $versions{$distro_name};
+
+            print("$distname_version:\n bumped minimum version from $versions{$distro_name}\n");
+            if ($module->is_uptodate(version => $distro_version)) {
+                print " already up to date\n";
+                next;
+            }
+
+            $versions{$distro_name} = $distro_version;
+        }
+        else {
+            # This is a new distro, so it needs to be added to the
+            # @distro list and processed.
+            $versions{$distro_name} = $distro_version;
+
+            print "$distname_version:\n";                
+            if ($module->is_uptodate(version => $distro_version)) {
+                print " already up to date\n";
+                next;
+            }
+
+            print " adding to install list\n";
+            unshift @distros, $distro_name;
+        }
+
+        print " finding prerequisites\n";
+
+        # Get the prerequisites, and put them at the head of the list
+        # to check, so we make a depth-first traversal of the
+        # dependency tree.  This is necessary to ensure dependencies
+        # between modules in the same prereqs list get honoured.
+        my $consumer_list = $consumers{$distname_version} ||= [];
+        my %prereqs = _get_prereqs($module, [sort @$consumer_list]);
+
+        # record this distro's consumption
+        foreach my $prereq (map "$_-$prereqs{$_}", keys %prereqs) {
+            $prereq =~ s/::/-/g;
+            my $consumer_list = $consumers{$prereq} ||= [];
+            push @$consumer_list, $distname_version;
+#            warn "# consumers are $prereq: @$consumer_list\n"; # DEBUG
+        }
+
+        unshift @modules, %prereqs;
+    }
+
+    # Next, remove those which are already installed at a sufficient
+    # version from the list
+    return map "$_-$versions{$_}", @distros;
+}
+
+######################################################################
+
+
+print "$_\n" 
+    foreach cpanplus_backend($module_name);
+__END__
+
+#foreach my $dep (cpan_finddependencies($module_name)) {
+foreach my $dep (cpanplus_backend($module_name)) {
+    my $name = $dep->name;
+    my $distribution = $dep->package_name .'-'. $dep->version;
+
+    print "Checking $name...\n";
+    my $module = $cpan->parse_module(module => $distribution);
+
+    my $details = $module->details;
+    my $inst_version = $details->{'Version Installed'} || "none";
+
+    # is this dependecy installed already?
+    print "$distribution is up to date (we have $inst_version)\n" and next 
+        if $module->is_uptodate;
+
+    # is it built but not installed?
+#    $version = is_built($dep);
+#    print "$name version $version is already build (although not installed)\n" and next 
+#        if $version > $required_version;
+
+
+    # build it
+    print "Build $distribution, as we have $inst_version\n";
 }
