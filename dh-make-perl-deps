@@ -32,6 +32,12 @@ my $DEL_SOURCE = 0;
 
 mkpath $_ for $fetch_dir, $build_dir;
 
+
+# Suppress CPANPLUS::Backend errors, since there can be many
+# unuseful errors warning that parse_module failed.
+local *CPANPLUS::Error::ERROR_FH;
+open $CPANPLUS::Error::ERROR_FH, ">", File::Spec->devnull;
+
 my $conf = CPANPLUS::Configure->new;
 $conf->set_conf(
 	prereqs => 1,
