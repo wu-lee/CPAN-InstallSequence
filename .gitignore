@@ -11,5 +11,5 @@
 /pod2htmi.tmp
 /t/temp*
 Makefile.PL
-HTML-Encapsulate-*
+CPAN-InstallSequence-*
 tmp*
