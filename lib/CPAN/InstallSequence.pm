@@ -1,10 +1,10 @@
-package CPAN::FindDependencies::VersionedInstallSequence;
+package CPAN::InstallSequence;
 use strict;
 use warnings;
-use CPAN::FindDependencies;
-use CPAN::FindDependencies::Dependency;
 use CPANPLUS::Backend;
-use File::Path;
+use File::Path ();
+use LWP::Simple ();
+use YAML::Tiny;
 use Carp;
 
 sub _trace { printf @_ }
@@ -20,7 +20,7 @@ sub _get_meta {
 
     my $cache_dir = $self->{cache_dir};
     my $dir = "$cache_dir/$name_version";
-    mkpath $dir;
+    File::Path::mkpath $dir;
 
     my $meta_yml_path = "$dir/META.yml";
 

@@ -2,8 +2,8 @@
 use strict;
 use warnings;
 
-use CPAN::FindDependencies::VersionedInstallSequence;
-use Parse::CPAN::Distributions;
+use CPAN::InstallSequence;
+#use Parse::CPAN::Distributions;
 use CPANPLUS::Backend;
 use File::Glob qw(bsd_glob);
 use File::HomeDir;
@@ -11,7 +11,6 @@ use File::Path qw(mkpath);
 
 my $module_name = shift 
     or die "Please supply the name of a perl module\n";
-
 
 #use File::Path qw(mkpath);
 
@@ -52,7 +51,7 @@ $conf->set_conf(
 my $cpan = CPANPLUS::Backend->new($conf);
 
 
-my @deps = CPAN::FindDependencies::VersionedInstallSequence::finddeps(
+my @deps = CPAN::InstallSequence::finddeps(
     $module_name,
 #    module_version => 0,
     cpan_backend => $cpan,
