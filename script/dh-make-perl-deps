@@ -3,7 +3,6 @@ use strict;
 use warnings;
 
 use CPAN::InstallSequence;
-#use Parse::CPAN::Distributions;
 use CPANPLUS::Backend;
 use File::Glob qw(bsd_glob);
 use File::HomeDir;
@@ -12,15 +11,6 @@ use File::Path qw(mkpath);
 my $module_name = shift 
     or die "Please supply the name of a perl module\n";
 
-#use File::Path qw(mkpath);
-
-
-
-# FIXME, actually, since these will all be the latest version, they
-# needn't have versions included.  (Although, conceivably, some
-# permutations of options might result with non-latest dependencies).
-
-# FIXME need to make sure CPANPLUS doesn't pause to ask if it can download.
 
 $ENV{DEBEMAIL} = 'dh-make-perl.5.wu-lee@spamgourmet.org';
 my $user = 'npw';
@@ -46,7 +36,6 @@ $conf->set_conf(
 	skiptest => 0,
 	extractdir => $build_dir,
 	fetchdir => $fetch_dir,
-#	verbose => 1
 );
 my $cpan = CPANPLUS::Backend->new($conf);
 
@@ -58,26 +47,9 @@ my @deps = CPAN::InstallSequence::finddeps(
 );
 
 
-# CPANPLUS needs an exact version number to work (currently, 0.88)
-# so we need to be able to find the latest version with this:
-#print "fetching CPAN find-ls information....\n";
-#my $dists = Parse::CPAN::Distributions->new;
-#print "done\n";
-#
-#for my $dep (@deps) {
-#    # set each dep to be the full name of the latest version 
-#    my $name = $dep->{name};
-#    my $version = $dists->latest_version($name)
-#        or die "No distribution $name known on CPAN\n";#
-#
-#    my $author = $dists->author_of($name, $version); 
-#    $dep = "$author/$name-$version";
-#}
-
 $_ = $_->{name}
     for @deps;
 
-#exit;
 print "$_\n" for @deps;
 
 run(@deps);
@@ -87,7 +59,6 @@ sub run {
     local $ENV{PERL5LIB};
 
     foreach my $dep (@_) {
-        #update_perl5lib();
         my $module = _parse_module($cpan, $dep);
         warn("failed to find module metadata for $dep\n"), next
             unless $module;
@@ -119,7 +90,6 @@ sub run {
         my $version = version->new($module->package_version);
         (my $norm_version = $version->normal) =~ s/^v//;
 
-#		update_perl5lib();
         local $ENV{DEB_BUILD_OPTIONS} = 'nocheck';
 		my @command = (qw/dh-make-perl --version/, "$norm_version-0.0~$user", @opts, $ext_dir);
 		warn("failed to execute, skipping: @command\n"), next 
