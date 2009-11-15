@@ -1,9 +1,85 @@
-I've been using dh-make-perl to package CPAN distributions as Debian
-packages, and although it works well for a single package, I was
-mildly frustrated by the inability to follow dependencies.  So, I've
-written some code to generate a Perl module install sequence using
-CPANPLUS, and a wrapper for dh-make-perl.  It's very very early days,
-but it will now find and go and build a list of dependencies, given a
-Perl module name, and build them into Debian packages using
-dh-make-perl.
+NAME
+    CPAN::InstallSequence - Given a module name, generates an ordered list
+    of prerequisites to install
+
+SYNOPSIS
+        use CPAN::InstallSequence;
+
+        # Get a list of CPAN distribution names required to install
+        # Some::Module on this system, in the order they need to be
+        # installed to respect their prerequisites. Any prerequisites
+        # which are already installed at the minimum required version or
+        # better will not be listed.
+        my @deps = CPAN::InstallSequence::finddeps(
+            'Some::Module',
+            %options
+        );
+
+        # The elements returned are simple hashrefs, with author,
+        # distribution name, and the minimim version required
+        # (which in the case of uninstalled modules, will be the most
+        # recent version on CPAN).
+        printf "%s-%s-%s\n", @$_{'author','name','version'}
+            for @deps;
+
+DESCRIPTION
+    This documentation is unfinished.
+
+INTERFACE
+DIAGNOSTICS
+    "Error message here, perhaps with %s placeholders"
+        [Description of error here]
+
+    "Another error message here"
+        [Description of error here]
+
+        [Et cetera, et cetera]
+
+CONFIGURATION AND ENVIRONMENT
+    CPAN::InstallSequence requires no configuration files or environment
+    variables.
+
+DEPENDENCIES
+    None.
+
+INCOMPATIBILITIES
+    None reported.
+
+BUGS AND LIMITATIONS
+    No bugs have been reported.
+
+    Please report any bugs or feature requests to
+    "bug-CPAN-InstallSequence@rt.cpan.org", or through the web interface at
+    <http://rt.cpan.org>.
+
+AUTHOR
+    Nick Woolley "<npw@cpan.org>"
+
+LICENCE AND COPYRIGHT
+    Copyright (c) 2009, Nick Woolley "<npw@cpan.org>". All rights reserved.
+
+    This module is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself. See perlartistic.
+
+DISCLAIMER OF WARRANTY
+    BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+    FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
+    OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+    PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
+    EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+    ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
+    YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
+    NECESSARY SERVICING, REPAIR, OR CORRECTION.
+
+    IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+    WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+    REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE LIABLE
+    TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL, OR
+    CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE THE
+    SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+    RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+    FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+    SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH
+    DAMAGES.
 
