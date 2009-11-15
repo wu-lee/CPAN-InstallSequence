@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use CPANPLUS::Backend;
 use File::Path ();
+use File::Temp;
 use LWP::Simple ();
 use YAML::Tiny;
 use Carp;

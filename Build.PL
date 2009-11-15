@@ -33,10 +33,19 @@ my $builder = Module::Build->new
      requires => 
      {
       'Test::More' => 0,
-      'version'    => 0.77,
+      'File::Temp' => 0, 
+      'version'    => 0.74,
+      'CPANPLUS::Backend' => 0,
+      'File::Spec' => 0,
+      'LWP' => 0,
+      'YAML::Tiny' => 0,
      },
      recommends => 
      {
+         'Test::Pod::Coverage' => 1.04,
+         'Test::Pod' => 1.14,
+         'Perl::Critic' => 0,
+         'File::HomeDir' => 0,
      },
      test_files         => [ rscan_dir('t', '\.t$') ],
      add_to_cleanup      => [ 'CPAN-InstallSequence-*' ],
