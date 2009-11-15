@@ -44,7 +44,6 @@ sub _get_prereqs {
     my $self = shift;
 
     my $module_name = shift;
-#    my $consumers = shift;
 
     my $meta_yml_path = $self->_get_meta($module_name);
 
@@ -59,9 +58,7 @@ sub _get_prereqs {
             return %{ $prereqs || {} }
         }
         
-#        my $version = $module->package_version;
         _trace(" failed to get any version of $module_name, skipping it\n");
-#               " consumers of $name-$version are: @$consumers\n");
         return;
     }
 
@@ -74,168 +71,6 @@ sub _get_prereqs {
     return $version, @prereqs;
 }
 
-# sub _is_uptodate {
-#     my $self = shift;
-
-#     my $module = shift;
-#     my $versions = shift;
-
-#     my $distro_name = $module->package_name;
-#     my $distro_version = $versions->{$distro_name};
-#     my $norm_version = $distro_version->normal;
-    
-#     # parse the distro name
-#     $module = $cpan->parse_module(module => $distro_name);
-
-    
-#     my $inst_version = $module->installed_version?
-#         version->new($module->installed_version)->normal :
-#             "none";
-    
-#     _trace "Checking $distro_name-$norm_version...\n";
-    
-#     # skip this module if it is installed already
-#     #        my %options = (version => $raw_module_version)
-#     #            if $raw_module_version;
-#     my $uptodate = $module->is_uptodate;
-#     _trace $uptodate?
-#         " require $distro_name $norm_version, as we have $inst_version\n" :
-#             " $distro_name is up to date (required: $norm_version; we have $inst_version)\n" ;
-    
-#     return $uptodate;
-# }
-
-
-sub finddeps_old {
-    my $module_name = shift 
-        or Carp::croak "You must supply a module name";
-    Carp::croak "Uneven number of options"
-        if @_ % 2;
-    my %options = @_;
-
-    my $version = $options{module_version} ||= 0;
-
-    my $cache_dir = $options{cache_dir} ||= File::Temp::tempdir( CLEANUP => 1);
-    File::Path::mkpath $cache_dir;
-
-    my $cpan = $options{cpan_backend} ||= CPANPLUS::Backend->new;
-
-    my $self = bless \%options, __PACKAGE__;
-
-
-    my @modules = ($module_name, $version);
-
-
-    # First, deduce the install order and required versions
-    # for all the dependencies of $module_name-$version:
-    my @distros;
-    my %versions;
-    my %consumers;
-    while(@modules) {
-        my $module_name = shift @modules;
-        my $raw_module_version = shift @modules;
-
-        # Don't try and install or analyse Perl or its dependencies.
-        next if $module_name eq 'perl';
-
-        # Construct a hypothetical distname with version, for parse_module...
-        (my $distname = $module_name) =~ s/::/-/g;
-        my $distname_version = $raw_module_version?
-            "$distname-$raw_module_version" : $distname;
-
-        # And so find the actual package this module belongs to
-        my $module = $cpan->parse_module(module => $distname_version);
-        if (!$module) {
-            _trace "$distname_version: can't parse module name, skipping it\n";
-            next;
-        }
-
-        my $distro_name = $module->package_name;
-
-        # Again: don't tackle Perl.
-        next if $distro_name eq 'perl';
-
-
-        my $distro_version = version->new($module->package_version);
-        $distname_version = "$distro_name-$distro_version";
-
-
-        # Now worry about whether the required version is installed or not.
-
-        if (defined $versions{$distro_name}) { 
-            # We've seen this distro required before; if we saw a
-            # newer version required we need do nothing more.
-            next 
-                if $distro_version <= $versions{$distro_name};
-
-            # Otherwise, bump the version required...
-            _trace("$distname_version:\n bumped minimum version from $versions{$distro_name}\n");
-            $versions{$distro_name} = $distro_version;
-
-            # Is this version or a newer one installed?  If so, we
-            # need do nothing more.
-            if ($module->is_uptodate(version => $distro_version)) {
-                _trace " already up to date\n";
-                next;
-            }
-
-            # Otherwise, continue on to get the prereqs for this
-            # module
-        }
-        else {
-            # This is a new distro, so it needs to be added to the
-            # @distro list and processed.
-            _trace "$distname_version:\n";                
-            $versions{$distro_name} = $distro_version;
-            
-            # Is this version or a newer one installed?  If so, we
-            # need do nothing more.
-            if ($module->is_uptodate(version => $distro_version)) {
-                _trace " already up to date\n";
-                next;
-            }
-
-            # Otherwise, add it to the install list, and continue on
-            # to get the prereqs for this module.
-            _trace " adding to install list\n";
-
-            unshift @distros, $distro_name;
-        }
-
-        # If we get here, we need to install or upgrade the module.
-        # And if we need to do that, we way as well use the latest
-        # version.  This also avoids needing to resolve requirements
-        # for non-existing versions (as sometimes crop up).
-
-        _trace " finding prerequisites\n";
-
-        # Get the prerequisites, and put them at the head of the list
-        # to check, so we make a depth-first traversal of the
-        # dependency tree.  This is necessary to ensure dependencies
-        # between modules in the same prereqs list get honoured.
-#        my $consumer_list = $consumers{$distname_version} ||= [];
-        my ($latest_version, %prereqs) = $self->_get_prereqs($distro_name);
-        _trace join "", map "   $_-$prereqs{$_}\n", sort keys %prereqs; # DEBUG
-
-        # The module's version may have been updated now, so update $distname_version
-        # and $version{$distname}
-        $latest_version = version->new($latest_version);
-        $distname_version = "$distro_name-$latest_version"; 
-        $versions{$distro_name} = $latest_version;
-
-        # record this distro's consumption
-#        foreach my $prereq (map "$_-$prereqs{$_}", keys %prereqs) {
-#            $prereq =~ s/::/-/g;
-#            my $consumer_list = $consumers{$prereq} ||= [];
-#            push @$consumer_list, $distname_version;
-#            _trace "# consumers are $prereq: @$consumer_list\n"; # DEBUG
-#        }
-
-        unshift @modules, %prereqs;
-    }
-
-    return map "$_-$versions{$_}", @distros;
-}
 
 
 
@@ -418,16 +253,6 @@ sub finddeps {
     );
 
 
-    # First, deduce the install order and required versions
-    # for all the dependencies of $module_name-$version:
-#    my @distros;
-#    while(@modules) {
-#        my $module_name = shift @modules;
-#        my $module_version = shift @modules;#
-
-#    }
-
-#    return map "$_-$versions{$_}", @distros;
     return @modules;
 }
 
