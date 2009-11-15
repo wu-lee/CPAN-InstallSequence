@@ -2,6 +2,18 @@
 use strict;
 use warnings;
 
+# This is an experimental wrapper around dh-make-perl.
+#
+# Usage:
+#  dh-make-perl-deps <module-or-dist-name>
+#
+# dh-make-perl works well for a single package, but does not follow
+# dependencies.  This uses CPAN::InstallSequence module install
+# sequence, then builds them into Debian packages using dh-make-perl.
+#
+# FIXME certain parameters such as DEBEMAIL, $user, $fetch_dir and
+# $build_dir are hardwired for now, but need to be configurable.
+
 use CPAN::InstallSequence;
 use CPANPLUS::Backend;
 use File::Glob qw(bsd_glob);
