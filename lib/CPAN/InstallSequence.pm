@@ -1,6 +1,9 @@
 package CPAN::InstallSequence;
 use strict;
 use warnings;
+
+use version; our $VERSION = qv('0.1');
+
 use CPANPLUS::Backend;
 use File::Path ();
 use File::Temp;
