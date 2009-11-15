@@ -53,7 +53,8 @@ sub _get_prereqs {
         my $cpan = $self->{cpan_backend};
         my $module = $cpan->module_tree($module_name);        
         if ($module->fetch && $module->extract) {
-            my $prereqs = $module->prereqs
+            my $prereqs;
+            $prereqs = $module->prereqs
                 if $module->can('prereqs'); # CPAN::Module::Fake can't.
             return %{ $prereqs || {} }
         }
