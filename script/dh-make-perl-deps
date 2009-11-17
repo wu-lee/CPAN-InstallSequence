@@ -5,14 +5,28 @@ use warnings;
 # This is an experimental wrapper around dh-make-perl.
 #
 # Usage:
-#  dh-make-perl-deps <module-or-dist-name>
+#  dh-make-perl-deps [options] <module-or-dist-name>
+#
+# Options can be:
+#  --email      The packager's email (default: <USER>@<HOSTNAME>) 
+#  --user       The packager's name  (default: <USER>)
+#  --data-dirs  Where to download and built the packages 
+#               (default: ~/.dh-make-perl-deps/)
 #
 # dh-make-perl works well for a single package, but does not follow
 # dependencies.  This uses CPAN::InstallSequence module install
 # sequence, then builds them into Debian packages using dh-make-perl.
 #
-# FIXME certain parameters such as DEBEMAIL, $user, $fetch_dir and
-# $build_dir are hardwired for now, but need to be configurable.
+# CAVEATS:
+#
+# Currently it does not know about any Debian packages, so
+# it will build packages which are already packaged by Debian.
+#
+# Currently it does not know about any non-perl dependecies (it gets
+# all its dependency information from META.yml files downloaded from
+# searchcpan.org).
+#
+# None of the options are checked.
 
 use CPAN::InstallSequence;
 use CPANPLUS::Backend;
@@ -77,9 +91,11 @@ my @deps = CPAN::InstallSequence::finddeps(
 $_ = $_->{name}
     for @deps;
 
-print "$_\n" for @deps;
+print "$_\n" for @deps; # DEBUG
 
 run(@deps);
+
+######################################################################
 
 sub run {
     local @INC = @INC;
@@ -135,7 +151,8 @@ sub run {
 
 # This works around cases of distributions containing no similarly
 # named modules which CPANPLUS-0.88 can't find.  A bug has been
-# submitted.
+# submitted as is fixed in the development release
+# (https://rt.cpan.org/Ticket/Display.html?id=51453).
 sub _parse_module {
     my $cpan = shift;
     my $name = shift;
