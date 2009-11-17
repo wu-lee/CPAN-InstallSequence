@@ -19,15 +19,30 @@ use CPANPLUS::Backend;
 use File::Glob qw(bsd_glob);
 use File::HomeDir;
 use File::Path qw(mkpath);
+use Getopt::Long;
+use Sys::Hostname qw(hostname);
+
 
 my $module_name = shift 
     or die "Please supply the name of a perl module\n";
 
+# Some defaults
+my $user = $ENV{USER} || $ENV{LOGNAME};
+my $hostname = hostname;
+my $email = "$user\@$hostname";
+my $data_dir = File::Spec->catdir(File::HomeDir->my_home, '.dh-make-perl-deps');
 
-$ENV{DEBEMAIL} = 'dh-make-perl.5.wu-lee@spamgourmet.org';
-my $user = 'npw';
-my $fetch_dir = File::Spec->catdir(File::HomeDir->my_home, qw(.dh-make-perl-deps mods));
-my $build_dir = File::Spec->catdir(File::HomeDir->my_home, qw(.dh-make-perl-deps build));
+# Override the defaults with any CLI options passed:
+my $result = GetOptions('user=s' => \$user,
+                        'email=s' => \$email,
+                        'data-dir=s' => \$data_dir);
+# FIXME check these values
+
+
+$ENV{DEBEMAIL} ||= $email;
+
+my $fetch_dir = File::Spec->catdir($data_dir, 'source');
+my $build_dir = File::Spec->catdir($data_dir, 'build');
 my $DEL_SOURCE = 0;
 
 
