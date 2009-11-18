@@ -11,6 +11,9 @@ use LWP::Simple ();
 use YAML::Tiny;
 use Carp;
 
+our %FORCE;
+
+
 sub _trace { printf @_ }
 
 
@@ -72,7 +75,23 @@ sub _get_prereqs {
     return $version, @prereqs;
 }
 
+sub _is_uptodate {
+	my $self = shift;
+	my $cpan_module = shift;
+	my $version = shift;
 
+	if ($cpan_module->is_uptodate(version => $version)) {
+		my $force = $self->{force_modules} || {};
+		if (defined $force->{$cpan_module->package_name}) {
+			_trace " already up to date, but forcing anyway\n";
+			return;
+		}
+		else {
+			_trace " already up to date\n";
+			return 1;
+		}
+	}
+}
 
 
 sub _traverse_modules {
@@ -179,10 +198,8 @@ sub _traverse_modules {
 
             # Is this version or a newer one installed?  If so, we
             # need do nothing more.
-            if ($cpan_module->is_uptodate(version => $module_version)) {
-                _trace " already up to date\n";
-                return;
-            }
+			return
+				if $self->_is_uptodate($cpan_module, $module_version);
 
             # Otherwise, continue on to get the prereqs for this
             # module
@@ -194,10 +211,8 @@ sub _traverse_modules {
             
             # Is this version or a newer one installed?  If so, we
             # need do nothing more.
-            if ($cpan_module->is_uptodate(version => $module_version)) {
-                _trace " already up to date\n";
-                return;
-            }
+			return
+				if $self->_is_uptodate($cpan_module, $module_version);
 
             # Otherwise, continue on to get the prereqs for this
             # module.
@@ -237,6 +252,12 @@ sub finddeps {
     File::Path::mkpath $cache_dir;
 
     my $cpan = $options{cpan_backend} ||= CPANPLUS::Backend->new;
+
+	my $force = $options{force_modules} || [];
+	Carp::croak "force_modules option must be an arrayref, not '$force'"
+			unless ref $force eq 'ARRAY';
+	$options{force_modules} =
+		{%FORCE, map { s/::/-/g; $_ => 1 } @$force};
 
     my $self = bless \%options, __PACKAGE__;
 

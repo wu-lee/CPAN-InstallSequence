@@ -12,6 +12,9 @@ use warnings;
 #  --user       The packager's name  (default: <USER>)
 #  --data-dirs  Where to download and built the packages 
 #               (default: ~/.dh-make-perl-deps/)
+#  --force <pkg-name>  
+#               Force this package to be installed, even if it is up
+#               to date. (Can be used multiple times.)
 #
 # dh-make-perl works well for a single package, but does not follow
 # dependencies.  This uses CPAN::InstallSequence module install
@@ -45,11 +48,13 @@ my $user = $ENV{USER} || $ENV{LOGNAME};
 my $hostname = hostname;
 my $email = "$user\@$hostname";
 my $data_dir = File::Spec->catdir(File::HomeDir->my_home, '.dh-make-perl-deps');
+my @force_modules;
 
 # Override the defaults with any CLI options passed:
 my $result = GetOptions('user=s' => \$user,
                         'email=s' => \$email,
-                        'data-dir=s' => \$data_dir);
+                        'data-dir=s' => \$data_dir,
+						'force=s' => \@force_modules);
 # FIXME check these values
 
 
@@ -85,6 +90,7 @@ my @deps = CPAN::InstallSequence::finddeps(
     $module_name,
 #    module_version => 0,
     cpan_backend => $cpan,
+	force_modules => \@force_modules,
 );
 
 
