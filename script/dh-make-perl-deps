@@ -99,7 +99,8 @@ run(@deps);
 
 sub run {
     local @INC = @INC;
-    local $ENV{PERL5LIB};
+	# use system perl, we certainly don't want broken ExtUtils::MakeMaker, or we get malformed .debs
+    local $ENV{PERL5LIB}; 
 
     foreach my $dep (@_) {
         my $module = _parse_module($cpan, $dep);
