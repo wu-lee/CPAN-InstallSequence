@@ -125,7 +125,9 @@ sub run {
 
         # don't build this dir if it's already been built
         my $deb_link = "$ext_dir/.deb";
-		next if -f $deb_link;
+		printf("skipping package %s, it is already built\n", $module->package_name), 
+			next 
+			if -f $deb_link;
 
 
 		my @opts =  (qw/--notest --build/);
